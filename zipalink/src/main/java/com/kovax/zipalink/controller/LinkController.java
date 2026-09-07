@@ -2,9 +2,12 @@ package com.kovax.zipalink.controller;
 
 import com.kovax.zipalink.dto.CreateLinkRequest;
 import com.kovax.zipalink.dto.LinkResponse;
+import com.kovax.zipalink.model.Link;
 import com.kovax.zipalink.security.UserPrincipal;
 import com.kovax.zipalink.service.LinkService;
 import jakarta.validation.Valid;
+
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -25,21 +28,26 @@ import java.util.List;
 public class LinkController {
 
     private final LinkService linkService;
+    private final String baseUrl;
 
-    public LinkController(LinkService linkService) {
+    public LinkController(
+            LinkService linkService,
+            String baseUrl
+    ) {
         this.linkService = linkService;
+        this.baseUrl = baseUrl;
     }
 
     /**
      * Público: dá pra encurtar sem estar logado. Se vier um Bearer token válido,
-     * o link é automaticamente associado ao usuário autenticado (principal != null).
+     * o link é automaticamente associado ao usuário autenticado (principal !=
+     * null).
      */
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public LinkResponse create(
             @Valid @RequestBody CreateLinkRequest request,
-            @AuthenticationPrincipal UserPrincipal principal
-    ) {
+            @AuthenticationPrincipal UserPrincipal principal) {
         return linkService.createShortLink(request, principal != null ? principal.getUser() : null);
     }
 
@@ -56,12 +64,17 @@ public class LinkController {
         return linkService.listAll();
     }
 
+    @GetMapping("/{shortCode}")
+    public LinkResponse getByCode(@PathVariable String shortCode) {
+        Link link = linkService.resolveAndRegisterClick(shortCode);
+        return LinkResponse.from(link, baseUrl);
+    }
+
     /** Dono do link ou ADMIN pode remover. */
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(
             @PathVariable Long id,
-            @AuthenticationPrincipal UserPrincipal principal
-    ) {
+            @AuthenticationPrincipal UserPrincipal principal) {
         linkService.deleteLink(id, principal.getUser());
         return ResponseEntity.noContent().build();
     }

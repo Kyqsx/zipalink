@@ -24,15 +24,17 @@ import java.util.List;
 /**
  * Autenticação stateless via JWT + autorização por role (USER/ADMIN).
  *
- * - /api/auth/**      -> público (registro e login)
- * - GET /{shortCode}  -> público (é o próprio redirecionamento do link)
- * - POST /api/links   -> público (dá pra encurtar sem estar logado; se vier um
- *                        token válido, o link é associado ao usuário autenticado)
+ * - /api/auth/** -> público (registro e login)
+ * - GET /{shortCode} -> público (é o próprio redirecionamento do link)
+ * - POST /api/links -> público (dá pra encurtar sem estar logado; se vier um
+ * token válido, o link é associado ao usuário autenticado)
  * - GET /api/links/mine, /api/users/me -> qualquer usuário autenticado
- * - GET /api/links, /api/admin/**      -> só ADMIN (ver @PreAuthorize nos controllers)
+ * - GET /api/links, /api/admin/** -> só ADMIN (ver @PreAuthorize nos
+ * controllers)
  *
  * O CORS é configurado aqui (e não via WebMvcConfigurer) de propósito: como
- * anyRequest().authenticated() protege boa parte das rotas, o preflight (OPTIONS)
+ * anyRequest().authenticated() protege boa parte das rotas, o preflight
+ * (OPTIONS)
  * precisa ser liberado dentro do próprio filter chain do Security, senão o
  * navegador nunca recebe os headers de CORS pras rotas protegidas.
  */
@@ -54,8 +56,7 @@ public class SecurityConfig {
     @Bean
     public AuthenticationManager authenticationManager(
             UserDetailsService userDetailsService,
-            PasswordEncoder passwordEncoder
-    ) {
+            PasswordEncoder passwordEncoder) {
         DaoAuthenticationProvider provider = new DaoAuthenticationProvider(userDetailsService);
         provider.setPasswordEncoder(passwordEncoder);
         return new ProviderManager(provider);
@@ -83,10 +84,10 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/api/auth/**").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/{shortCode:[A-Za-z0-9_-]{3,16}}").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/links").permitAll()
-                        .anyRequest().authenticated()
-                )
+                        .requestMatchers(HttpMethod.GET, "/api/links/mine").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/links/{shortCode:[A-Za-z0-9_-]{3,16}}").permitAll()
+                        .anyRequest().authenticated())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
