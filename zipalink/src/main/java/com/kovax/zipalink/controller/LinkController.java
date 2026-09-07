@@ -30,10 +30,7 @@ public class LinkController {
     private final LinkService linkService;
     private final String baseUrl;
 
-    public LinkController(
-            LinkService linkService,
-            String baseUrl
-    ) {
+    public LinkController(LinkService linkService, @Value("${app.base-url}") String baseUrl) {
         this.linkService = linkService;
         this.baseUrl = baseUrl;
     }
