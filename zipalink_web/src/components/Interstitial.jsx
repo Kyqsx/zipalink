@@ -4,16 +4,85 @@ import { api } from '../lib/api'
 const WAIT_SECONDS = 10
 
 /**
+ * Bloco de Banner da Adsterra.
+ *
+ * A Adsterra entrega o banner via document.write dentro do script "invoke.js".
+ * Rodar isso direto na página React pode quebrar o app (document.write depois
+ * do load reescreve o documento inteiro), então isolamos o anúncio dentro de
+ * um <iframe> próprio — o document.write só afeta o documento do iframe.
+ *
+ * Configure no .env do frontend:
+ *   VITE_ADSTERRA_BANNER_KEY=coloque_a_key_do_painel_adsterra_aqui
+ *   VITE_ADSTERRA_BANNER_DOMAIN=www.dominio-do-seu-banner.com  (o domínio que
+ *     a Adsterra te der junto com a key, ex: highperformanceformat.com)
+ * Sem VITE_ADSTERRA_BANNER_KEY definido, mostra um placeholder.
+ */
+function AdsterraBanner({ width = 300, height = 250 }) {
+  const iframeRef = useRef(null)
+  const adKey = import.meta.env.VITE_ADSTERRA_BANNER_KEY
+  const adDomain = import.meta.env.VITE_ADSTERRA_BANNER_DOMAIN
+
+  useEffect(() => {
+    if (!adKey || !adDomain) return undefined
+    const iframe = iframeRef.current
+    if (!iframe) return undefined
+
+    const doc = iframe.contentWindow.document
+    doc.open()
+    doc.write(`<!DOCTYPE html><html><head><style>
+      html,body{margin:0;padding:0;overflow:hidden;background:transparent;}
+    </style></head><body>
+      <script>
+        atOptions = {
+          'key' : '${adKey}',
+          'format' : 'iframe',
+          'height' : ${height},
+          'width' : ${width},
+          'params' : {}
+        };
+      </script>
+      <script src="//${adDomain}/${adKey}/invoke.js"></script>
+    </body></html>`)
+    doc.close()
+
+    return undefined
+  }, [adKey, adDomain, width, height])
+
+  if (!adKey || !adDomain) {
+    return (
+      <div className="ad-placeholder" style={{ width, height, margin: '0 auto' }}>
+        Espaço publicitário — Adsterra Banner
+      </div>
+    )
+  }
+
+  return (
+    <iframe
+      ref={iframeRef}
+      title="Anúncio"
+      width={width}
+      height={height}
+      style={{ border: 'none', overflow: 'hidden', display: 'block', margin: '0 auto' }}
+      scrolling="no"
+    />
+  )
+}
+
+/**
  * Página de "aguarde N segundos" exibida antes do redirect do link curto.
- * Monetização: blocos do Google AdSense. Configure VITE_ADSENSE_CLIENT
- * (ex: ca-pub-1234567890123456) no .env do frontend; sem ele, mostra um
- * placeholder de espaço publicitário.
+ * Monetização: Adsterra — Banner (topo/rodapé) + Social Bar (script único,
+ * sem container, dispara sozinho por cima da página).
+ *
+ * Configure no .env do frontend:
+ *   VITE_ADSTERRA_BANNER_KEY=...
+ *   VITE_ADSTERRA_BANNER_DOMAIN=...
+ *   VITE_ADSTERRA_SOCIAL_BAR_URL=//caminho-completo-que-a-adsterra-te-deu.js
  */
 export default function Interstitial({ shortCode }) {
   const [link, setLink] = useState(null)
   const [error, setError] = useState(null)
   const [remaining, setRemaining] = useState(WAIT_SECONDS)
-  const adPushed = useRef(false)
+  const socialBarInjected = useRef(false)
 
   // Carrega o destino
   useEffect(() => {
@@ -39,30 +108,25 @@ export default function Interstitial({ shortCode }) {
     return () => clearInterval(timer)
   }, [link, remaining])
 
-  const adsClient = import.meta.env.VITE_ADSENSE_CLIENT
-
-  // Carrega o script do AdSense e empurra o anúncio quando pronto
+  // Social Bar: um único <script>, injetado uma vez, some sozinho quando o
+  // usuário sai da página (o script fica no <body> só enquanto a interstitial
+  // estiver montada).
   useEffect(() => {
-    if (!adsClient || !link || adPushed.current) return undefined
+    const socialBarUrl = import.meta.env.VITE_ADSTERRA_SOCIAL_BAR_URL
+    if (!socialBarUrl || !link || socialBarInjected.current) return undefined
 
-    adPushed.current = true
+    socialBarInjected.current = true
     const script = document.createElement('script')
+    script.type = 'text/javascript'
+    script.src = socialBarUrl
     script.async = true
-    script.src = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${adsClient}`
-    script.crossOrigin = 'anonymous'
-    document.head.appendChild(script)
+    document.body.appendChild(script)
 
-    const pushTimer = setTimeout(() => {
-      try {
-        window.adsbygoogle = window.adsbygoogle || []
-        window.adsbygoogle.push({})
-      } catch {
-        // AdSense pode falhar (blocker, sem aprovação etc.) — segue o baile
-      }
-    }, 500)
-
-    return () => clearTimeout(pushTimer)
-  }, [adsClient, link])
+    return () => {
+      document.body.removeChild(script)
+      socialBarInjected.current = false
+    }
+  }, [link])
 
   const progress = link ? ((WAIT_SECONDS - remaining) / WAIT_SECONDS) * 100 : 0
 
@@ -84,17 +148,7 @@ export default function Interstitial({ shortCode }) {
   return (
     <div className="interstitial">
       <div className="inter-ad inter-ad-top">
-        {adsClient ? (
-          <ins
-            className="adsbygoogle"
-            style={{ display: 'block' }}
-            data-ad-client={adsClient}
-            data-ad-format="auto"
-            data-full-width-responsive="true"
-          />
-        ) : (
-          <div className="ad-placeholder">Espaço publicitário — Google AdSense</div>
-        )}
+        <AdsterraBanner width={300} height={250} />
       </div>
 
       <div className="inter-card">
@@ -126,17 +180,7 @@ export default function Interstitial({ shortCode }) {
       </div>
 
       <div className="inter-ad inter-ad-bottom">
-        {adsClient ? (
-          <ins
-            className="adsbygoogle"
-            style={{ display: 'block' }}
-            data-ad-client={adsClient}
-            data-ad-format="auto"
-            data-full-width-responsive="true"
-          />
-        ) : (
-          <div className="ad-placeholder">Espaço publicitário — Google AdSense</div>
-        )}
+        <AdsterraBanner width={300} height={250} />
       </div>
     </div>
   )
